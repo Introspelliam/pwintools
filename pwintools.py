@@ -670,23 +670,17 @@ class Process(windows.winobject.process.WinProcess):
 
     def search(self, pattern, writable = False):
         """search(pattern, writable = False) search pattern in all loaded modules (EXE + DLL) ; returns the addr (0 on error)"""
-        if not self.check_initialized():
-            return 0
-        for module in self.peb.modules:
-            try:
+        if self.check_initialized():
+            for module in self.peb.modules:
                 for section in module.pe.sections:
                     if writable and section.Characteristics & gdef.IMAGE_SCN_MEM_WRITE == 0:
                         continue
-                    for page in xrange(section.start, section.start + section.size, 0x1000):
-                        try:
-                            pos = self.read_memory(page, min(0x1000, (section.start + section.size) - page)).find(pattern)
-                            if pos != -1:
-                                return page + pos
-                        except:
-                            pass
-            except:
-                pass
-        return 0
+                    page = section.start
+                    while page < section.start + section.size:
+                        pos = self.read_memory(page, min(0x1000, (section.start + section.size) - page)).find(pattern)
+                        if pos != -1:
+                            yield page + pos
+                        page += 0x1000
     
     @property
     def imports(self):
@@ -727,6 +721,14 @@ class Process(windows.winobject.process.WinProcess):
         if not function in module.pe.exports:
             return 0
         return module.pe.exports[function]
+
+    def get_base(self, dll):
+        """get_proc_address(self, dll, function) returns the address of the dll!function"""
+        modules = [m for m in self.peb.modules if m.name == dll]
+        if not len(modules):
+            return 0
+        module = modules[0]
+        return module.baseaddr
     
     @property
     def libs(self):
